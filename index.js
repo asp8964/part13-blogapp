@@ -1,74 +1,40 @@
-require('dotenv').config()
-const { Sequelize, Model, DataTypes, Op } = require('sequelize')
 const express = require('express')
 const app = express()
+
+const { PORT } = require('./util/config')
+
+const { connectToDatabase } = require('./util/db')
+
+const blogsRouter = require('./controllers/blogs')
+const usersRouter = require('./controllers/users')
+const loginRouter = require('./controllers/login')
+const authorsRouter = require('./controllers/authors')
+
 app.use(express.json())
 
-const sequelize = new Sequelize(process.env.DATABASE_URL, {
-    dialectOptions: {
-        ssl: {
-            require: true,
-            rejectUnauthorized: false
-        }
-    }
-})
+app.use('/api/blogs', blogsRouter)
+app.use('/api/users', usersRouter)
+app.use('/api/login', loginRouter)
+app.use('/api/authors', authorsRouter)
 
-class Blog extends Model { }
-Blog.init({
-    id: {
-        type: DataTypes.INTEGER,
-        primaryKey: true,
-        autoIncrement: true
-    },
-    author: {
-        type: DataTypes.TEXT,
-    },
-    url: {
-        type: DataTypes.TEXT,
-        allowNull: false,
-    },
-    title: {
-        type: DataTypes.TEXT,
-        allowNull: false,
-    },
-    likes: {
-        type: DataTypes.INTEGER,
-        defaultValue: 0,
-    },
-}, {
-    sequelize,
-    underscored: true,
-    timestamps: false,
-    modelName: 'blog'
-})
-Blog.sync()
+const errorHandler = (error, _, response, next) => {
+  console.error(JSON.stringify(error))
 
-app.get('/api/blogs', async (_, res) => {
-    const blogs = await Blog.findAll()
-    res.json(blogs)
-})
+  if (error.name === 'SequelizeValidationError') {
+    const msgs = error?.errors?.map(e => e.message)
+    return response.status(400).send({ error: msgs })
+  }
 
-app.post('/api/blogs', async (req, res) => {
-    try {
-        const blog = await Blog.create(req.body)
-        return res.json(blog)
-    } catch (error) {
-        return res.status(400).json({ error })
-    }
-})
+  next(error)
+}
 
-app.delete('/api/blogs/:id', async (req, res) => {
-    const result = await Blog.destroy({
-        where: {
-            id: {
-                [Op.eq]: req.params.id
-            }
-        }
-    })
-    res.json(result)
-})
+app.use(errorHandler)
 
-const PORT = process.env.PORT || 3001
-app.listen(PORT, () => {
+const start = async () => {
+  await connectToDatabase()
+  app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`)
-})
+  })
+}
+
+start()
